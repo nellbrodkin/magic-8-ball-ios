@@ -9,11 +9,11 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var eightBallMessage = "8" // Initial message
+    private let responses: [String] = loadResponses()
 
     var body: some View {
         ZStack {
-            Color.white // Background color
-                .ignoresSafeArea()
+            Color.white.ignoresSafeArea() // Background color
 
             Circle()
                 .fill(Color.black)
@@ -23,82 +23,57 @@ struct ContentView: View {
                 .fill(Color.white)
                 .frame(width: 200, height: 200)
             
-            if (eightBallMessage == "8") {
+            if eightBallMessage == "8" {
                 Text(eightBallMessage)
                     .font(.custom("Helvetica", size: 150))
-
             } else {
                 GeometryReader { geometry in
                     Text(eightBallMessage)
                         .font(.custom("Helvetica", size: geometry.size.width * 0.3))
-                        .minimumScaleFactor(0.5) // Scale text down if necessary
-    //                    .lineLimit(1)  Ensure it stays on one line
+                        .minimumScaleFactor(0.5)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .multilineTextAlignment(.center)
                 }
                 .frame(width: 150, height: 150) // Match the inner white circle size
             }
-           
         }
         .background(
-            ShakeDetectionView { newMessage in
-                eightBallMessage = newMessage // Update the message on shake
+            ShakeDetectionView {
+                eightBallMessage = responses.randomElement() ?? "Error"
             }
         )
     }
 }
 
+func loadResponses() -> [String] {
+    guard let url = Bundle.main.url(forResource: "responses", withExtension: "json") else {
+        print("responses.json not found in bundle")
+        return []
+    }
+    
+    do {
+        let data = try Data(contentsOf: url)
+        if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: [String]],
+           let responses = json["responses"] {
+            return responses
+        }
+    } catch {
+        print("Error parsing JSON: \(error.localizedDescription)")
+    }
+    
+    return []
+}
+
 struct ShakeDetectionView: UIViewControllerRepresentable {
-    var onShake: (String) -> Void
+    var onShake: () -> Void
 
     func makeUIViewController(context: Context) -> ShakeViewController {
         let controller = ShakeViewController()
-        controller.shakeHandler = {
-            fetchMagic8BallResponse { response in
-                if let response = response {
-                    onShake(response) // Pass the response to the ContentView
-                }
-            }
-        }
+        controller.shakeHandler = onShake
         return controller
     }
 
     func updateUIViewController(_ uiViewController: ShakeViewController, context: Context) {}
-
-    func fetchMagic8BallResponse(completion: @escaping (String?) -> Void) {
-        guard let url = URL(string: "https://eightballapi.com/api") else {
-            print("Invalid URL")
-            completion(nil)
-            return
-        }
-
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
-            if let error = error {
-                print("Error: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-
-            guard let data = data else {
-                print("No data received")
-                completion(nil)
-                return
-            }
-
-            do {
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let reply = json["reading"] as? String {
-                    completion(reply) // Pass the message to the completion handler
-                } else {
-                    completion(nil)
-                }
-            } catch {
-                print("Failed to parse JSON: \(error.localizedDescription)")
-                completion(nil)
-            }
-        }
-        task.resume()
-    }
 }
 
 class ShakeViewController: UIViewController {
@@ -106,7 +81,7 @@ class ShakeViewController: UIViewController {
 
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
         if motion == .motionShake {
-            shakeHandler?() // Call the shake handler
+            shakeHandler?()
         }
     }
 }
